@@ -31,7 +31,7 @@ Prereqs: Python 3.11+, [Ollama](https://ollama.com) installed.
 
 ```bash
 make install      # python -m venv .venv && pip install -r requirements.txt
-make ollama       # ollama pull llama3   (skip if you already have a model)
+make ollama       # ollama pull llama3.2   (skip if you already have a model)
 # drop your docs into source_documents/  (a demo test.pdf ships in the repo)
 make ingest       # embed everything into db/
 make run          # API on :5000, Streamlit UI on :8501
@@ -68,7 +68,7 @@ Liveness probe. Returns the configured model name.
 
 ```bash
 $ curl -s http://localhost:5000/health
-{"status":"ok","model":"llama3"}
+{"status":"ok","model":"llama3.2"}
 ```
 
 ### `POST /ask`
@@ -133,7 +133,7 @@ All values are env vars; defaults are sensible. See `.env.example`.
 
 | variable                | default              | purpose                                     |
 |-------------------------|----------------------|---------------------------------------------|
-| `MODEL`                 | `llama3`             | Ollama model name                           |
+| `MODEL`                 | `llama3.2`           | Ollama model name                           |
 | `EMBEDDINGS_MODEL_NAME` | `all-MiniLM-L6-v2`   | HuggingFace sentence-transformers model     |
 | `PERSIST_DIRECTORY`     | `db`                 | Where Chroma persists the vector store      |
 | `TARGET_SOURCE_CHUNKS`  | `4`                  | Chunks retrieved per query                  |
@@ -172,7 +172,7 @@ Everything lives under `examples/`:
   `11434` (Ollama).
 - **Ingest reports "No new documents to load"** — the file is already in the
   store. To re-ingest from scratch: `make clean && make ingest`.
-- **First model pull is slow** — `llama3` is several GB. Switch to a smaller
+- **First model pull is slow** — `llama3.2` is ~2 GB. Switch to a different
   model via `MODEL=mistral make ollama && MODEL=mistral make api`.
 
 ---

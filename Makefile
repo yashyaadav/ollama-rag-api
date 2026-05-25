@@ -3,7 +3,7 @@
 PY      := .venv/bin/python
 PIP     := .venv/bin/pip
 STREAM  := .venv/bin/streamlit
-MODEL   ?= llama3
+MODEL   ?= llama3.2
 IMAGE   ?= ollama-rag-api
 
 help:  ## Show this help

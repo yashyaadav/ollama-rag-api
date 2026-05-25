@@ -6,7 +6,7 @@
 #   4. Launch the Flask API on :5000 and Streamlit on :8501
 set -euo pipefail
 
-MODEL="${MODEL:-llama3}"
+MODEL="${MODEL:-llama3.2}"
 
 ollama serve &
 OLLAMA_PID=$!

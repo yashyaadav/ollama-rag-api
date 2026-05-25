@@ -1,12 +1,12 @@
 #!/bin/bash
 # Pull the configured LLM into the local Ollama instance.
-# Honours the MODEL env var (default: llama3).
+# Honours the MODEL env var (default: llama3.2).
 #
 # On a host with Ollama already running, just `ollama pull` is enough.
 # Inside the container we have to start `ollama serve` first.
 set -euo pipefail
 
-MODEL="${MODEL:-llama3}"
+MODEL="${MODEL:-llama3.2}"
 
 if pgrep -x ollama >/dev/null 2>&1; then
   ollama pull "$MODEL"

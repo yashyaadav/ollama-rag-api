@@ -19,7 +19,7 @@ swagger = Swagger(app, template={
     "schemes": ["http"],
 })
 
-model = os.getenv("MODEL", "llama3")
+model = os.getenv("MODEL", "llama3.2")
 embeddings_model_name = os.getenv("EMBEDDINGS_MODEL_NAME", "all-MiniLM-L6-v2")
 persist_directory = os.getenv("PERSIST_DIRECTORY", "db")
 target_source_chunks = int(os.getenv("TARGET_SOURCE_CHUNKS", 4))
@@ -50,7 +50,7 @@ def health():
               example: ok
             model:
               type: string
-              example: llama3
+              example: llama3.2
     """
     return jsonify({"status": "ok", "model": model})
 
