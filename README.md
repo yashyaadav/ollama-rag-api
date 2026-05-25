@@ -26,28 +26,52 @@ runs the whole stack in one container.
 
 ## Quick start (local)
 
-Prereqs: Python 3.11+, [Ollama](https://ollama.com) installed and running
-(`ollama serve` or the menu-bar app).
+**Prereqs:**
+
+- **Python 3.11+**
+- **[Ollama](https://ollama.com)** installed and running. macOS: `brew install ollama && ollama serve` (or launch the menu-bar app). Linux: `curl -fsSL https://ollama.com/install.sh | sh && ollama serve`.
+- ~3 GB free disk for the default model + embeddings model
+
+**Steps:**
 
 ```bash
-make install      # python -m venv .venv && pip install -r requirements.txt
-make ollama       # ollama pull llama3.2   (skip if you already have a model)
-# drop your docs into source_documents/  (a demo test.pdf ships in the repo)
-make ingest       # embed everything into db/
+git clone https://github.com/yashyaadav/ollama-rag-api.git
+cd ollama-rag-api
+
+make install      # creates .venv and installs Python deps
+make ollama       # ollama pull llama3.2 (~2 GB, one-time; skip if already pulled)
+make ingest       # embed source_documents/ into db/ (a demo test.pdf ships in the repo)
 make run          # API on :5001, Streamlit UI on :8501
 ```
 
-Open:
-
-- **Streamlit chat UI** — http://localhost:8501
-- **Swagger UI** — http://localhost:5001/apidocs
-- **Health probe** — http://localhost:5001/health
-
 `make help` lists every target.
+
+### Your first query
+
+After `make run` shows `Running on http://127.0.0.1:5001` **and** Streamlit prints
+its URL, give the API ~10 seconds to finish its first-time LangChain init, then:
+
+1. Open **http://localhost:8501** — you'll see the Streamlit UI.
+2. The sidebar should show **✅ API up — llama3.2** under "API". If it shows
+   ❌ unreachable, the API is still booting — click **🔄 Recheck** or wait a few
+   seconds and reload.
+3. In the sidebar you'll see **test.pdf — 6 chunks** under "Ingested Files".
+   Type a question into the chat input (e.g. *"What is this document about?"*)
+   and hit Enter.
+4. The answer appears with an expandable **📚 Sources** section listing the
+   chunks the LLM used.
+5. To use your own corpus: drag-and-drop files into the sidebar's **Upload
+   File(s)** panel and click **Ingest uploaded**. They appear in the list with
+   a per-file delete (✕) and a chunk count.
+
+Prefer the API directly? `curl http://localhost:5001/health` then jump to the
+[API reference](#api-reference) below.
 
 ---
 
 ## Quick start (Docker)
+
+**Prereqs:** Docker Desktop (or any Docker engine).
 
 ```bash
 make docker       # builds the image, then runs it with 5001 / 8501 / 11434 exposed
@@ -57,6 +81,15 @@ The container runs Ollama, pulls the model lazily if missing, ingests
 `source_documents/` only when it has content and no `db/` exists, then serves
 the API and Streamlit. Mount your own `source_documents/` and `db/` as volumes
 (the Makefile does this for you).
+
+> **First build is slow** (~5 min) because it has to pull `python:3.11-slim`,
+> install build tools, and download the Ollama installer. Subsequent builds
+> reuse layers.
+>
+> **macOS gotcha:** if you already have host Ollama running on port `11434`,
+> `make docker-run` will fail with *"port already allocated"*. Either stop the
+> host daemon (`pkill -f "ollama serve"` or quit the menu-bar app) or skip the
+> `-p 11434:11434` mapping — the container has its own internal Ollama.
 
 ---
 
@@ -174,10 +207,24 @@ variable, and hit any request.
 
 ## Streamlit UI
 
-A small chat frontend at http://localhost:8501. Sidebar shows live API health
-and links straight to Swagger. Each assistant turn has an expandable
-**Sources** section listing the retrieved chunks so you can verify the
-answer is grounded.
+A chat frontend at http://localhost:8501. The sidebar groups everything you
+need: mode selector, file upload, ingested-files list with per-row delete,
+and a live API-health indicator with links to Swagger and the raw OpenAPI
+spec. Each assistant turn has an expandable **📚 Sources** section listing
+the retrieved chunks so you can verify the answer is grounded.
+
+### Modes
+
+| Mode        | What it does                                      | Backend endpoint |
+|-------------|---------------------------------------------------|-------------------|
+| **RAG**     | Default. Retrieves chunks then asks the LLM       | `POST /ask`       |
+| **Search**  | Returns retrieved chunks only — no LLM synthesis  | `POST /ask` (response renders sources only) |
+| **Basic**   | Talk to the model directly, no retrieval (~2s)    | `POST /chat`      |
+| **Summarize** | Summarize one file or the whole corpus (uses a button, not chat input) | `POST /summarize` |
+
+Below the chat input: **🔄 Retry** re-fires the last question with the
+current mode, **↩️ Undo** removes the last exchange, **🗑️ Clear** wipes
+the history.
 
 Reads `API_URL` from the env (defaults to `http://localhost:5001`), so it
 points at either the local Flask process or a Dockerised API.
@@ -215,16 +262,36 @@ only new files; the existing vector store is preserved.
 Everything lives under `examples/`:
 
 - `curl.sh` — single-shot curl POST to `/ask`, JSON-safe quoting + jq
-- `httpie.sh` — same in HTTPie syntax
-- `python_client.py` — minimal `ChatClient` with `health()` and `ask()`
+- `httpie.sh` — same in HTTPie syntax (`brew install httpie` if you don't have it)
+- `python_client.py` — minimal `ChatClient` with `health()` and `ask()`; run from inside the project venv: `.venv/bin/python examples/python_client.py "..."`
 - `postman_collection.json` — Postman v2.1 collection (importable)
+
+---
+
+## Security
+
+This is a **local-only** project by design — there is no authentication on
+any endpoint and the API binds to `0.0.0.0` so it's reachable from your LAN.
+Anyone who can reach the port can call `/ingest`, `/ask`, `DELETE /files/<name>`,
+or read every chunk in your vectorstore.
+
+**Don't expose it directly to the internet.** If you need to:
+
+- Bind it to localhost only: edit `api.py` and change `host="0.0.0.0"` to `host="127.0.0.1"`.
+- Or front it with a reverse proxy (Caddy / nginx) that adds basic auth or a bearer token.
+
+Setting `FLASK_DEBUG=1` enables the Werkzeug debugger, which allows remote code
+execution if the port is reachable — never enable in production.
 
 ---
 
 ## Troubleshooting
 
+- **Streamlit sidebar shows ❌ API unreachable on first load** — the API's
+  ~10 s cold start (LangChain + HuggingFace embeddings init) hasn't finished.
+  Click **🔄 Recheck** in the sidebar, or wait a few seconds and reload.
 - **`/health` returns `500` / connection refused** — Ollama isn't running.
-  Run `ollama serve` in another terminal (the Docker setup handles this for you).
+  `ollama serve` in another terminal (the Docker setup handles this for you).
 - **Port already in use** — override with `PORT=5050 make api` (Flask) or
   `make ui -- --server.port 8600` (Streamlit). Default ports: `5001` (API),
   `8501` (UI), `11434` (Ollama).
@@ -232,10 +299,17 @@ Everything lives under `examples/`:
   to `5001`. macOS Monterey+ binds port 5000 for AirPlay Receiver. You can
   either keep `5001` (recommended) or disable AirPlay Receiver in
   *System Settings → General → AirDrop & Handoff*.
+- **Docker: `Cannot connect to the Docker daemon`** — Docker Desktop isn't
+  running. Launch it, wait for the whale icon to settle, then retry.
+- **Docker: `port already allocated` on 11434** — host Ollama is also using
+  that port. Stop the host daemon, or drop `-p 11434:11434` from the
+  `docker run` command (the container has its own internal Ollama).
 - **Ingest reports "No new documents to load"** — the file is already in the
   store. To re-ingest from scratch: `make clean && make ingest`.
 - **First model pull is slow** — `llama3.2` is ~2 GB. Switch to a different
   model via `MODEL=mistral make ollama && MODEL=mistral make api`.
+- **Switched MODEL but the API still reports the old one** — the API caches
+  the model at startup. Restart it: `Ctrl+C` then `MODEL=<new> make api`.
 
 ---
 
