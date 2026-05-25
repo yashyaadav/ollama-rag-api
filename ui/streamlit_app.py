@@ -1,17 +1,9 @@
 import os
-import shutil
-import subprocess
-import sys
-from pathlib import Path
 
 import requests
 import streamlit as st
 
 API_URL = os.getenv("API_URL", "http://localhost:5001")
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SOURCE_DIR = REPO_ROOT / os.getenv("SOURCE_DIRECTORY", "source_documents")
-PERSIST_DIR = REPO_ROOT / os.getenv("PERSIST_DIRECTORY", "db")
 
 SUPPORTED_EXTS = [
     "pdf", "txt", "md", "docx", "doc", "csv",
@@ -47,7 +39,6 @@ st.markdown(
     font-size: 13px;
     color: #2a2540;
   }
-  /* Tighten sidebar spacing so it reads like PrivateGPT's panel */
   section[data-testid="stSidebar"] .stRadio > label { font-weight: 600; }
   section[data-testid="stSidebar"] hr { margin: 12px 0; }
 </style>
@@ -59,6 +50,8 @@ st.markdown(
 )
 
 
+# --------------------------- API client ---------------------------
+
 def api_health():
     try:
         return requests.get(f"{API_URL}/health", timeout=3).json()
@@ -66,56 +59,56 @@ def api_health():
         return None
 
 
-def list_ingested_files():
-    if not SOURCE_DIR.exists():
+def api_list_files():
+    try:
+        return requests.get(f"{API_URL}/files", timeout=5).json().get("files", [])
+    except Exception:
         return []
-    return sorted(
-        f.name for f in SOURCE_DIR.iterdir()
-        if f.is_file() and not f.name.startswith(".")
-    )
 
 
-def run_ingest():
-    proc = subprocess.run(
-        [sys.executable, "ingest.py"],
-        cwd=str(REPO_ROOT),
-        capture_output=True,
-        text=True,
-    )
-    return proc.returncode, proc.stdout, proc.stderr
+def api_upload(uploaded_file):
+    files = {"file": (uploaded_file.name, uploaded_file.getbuffer(), uploaded_file.type or "application/octet-stream")}
+    return requests.post(f"{API_URL}/ingest", files=files, timeout=600)
 
 
-def wipe_vectorstore():
-    if PERSIST_DIR.exists():
-        shutil.rmtree(PERSIST_DIR)
+def api_delete(filename: str):
+    return requests.delete(f"{API_URL}/files/{filename}", timeout=60)
 
 
-def ask_api(query: str, timeout: int = 300) -> dict:
-    r = requests.post(f"{API_URL}/ask", json={"query": query}, timeout=timeout)
-    r.raise_for_status()
-    return r.json()
+def api_ask(query: str):
+    return requests.post(f"{API_URL}/ask", json={"query": query}, timeout=300).json()
 
+
+def api_chat(query: str):
+    return requests.post(f"{API_URL}/chat", json={"query": query}, timeout=300).json()
+
+
+def api_summarize(file: str | None = None):
+    body = {"file": file} if file else {}
+    return requests.post(f"{API_URL}/summarize", json=body, timeout=600).json()
+
+
+# --------------------------- session state ---------------------------
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "pending_query" not in st.session_state:
     st.session_state.pending_query = None
+if "pending_mode" not in st.session_state:
+    st.session_state.pending_mode = None
 
-# ---------- Sidebar ----------
+
+# --------------------------- sidebar ---------------------------
+
 with st.sidebar:
     st.subheader("Mode")
     mode_options = ["RAG", "Search", "Basic", "Summarize"]
-    mode = st.radio(
-        "Mode",
-        mode_options,
-        index=0,
-        label_visibility="collapsed",
-    )
+    mode = st.radio("Mode", mode_options, index=0, label_visibility="collapsed")
     mode_help = {
         "RAG": "Get contextualized answers from your ingested files.",
         "Search": "Return retrieved chunks only — no LLM synthesis.",
-        "Basic": "Talk to the model with no retrieval (coming soon).",
-        "Summarize": "Summarize the ingested files (coming soon).",
+        "Basic": "Talk to the model directly, no retrieval.",
+        "Summarize": "Summarize a selected file (or the whole corpus).",
     }
     st.caption(mode_help[mode])
 
@@ -130,45 +123,55 @@ with st.sidebar:
     )
     if uploaded:
         if st.button("Ingest uploaded", type="primary", use_container_width=True):
-            SOURCE_DIR.mkdir(parents=True, exist_ok=True)
-            for f in uploaded:
-                (SOURCE_DIR / f.name).write_bytes(f.getbuffer())
-            with st.spinner(f"Ingesting {len(uploaded)} file(s)…"):
-                rc, out, err = run_ingest()
-            if rc == 0:
-                st.success(f"Ingested {len(uploaded)} file(s).")
-            else:
-                st.error(f"Ingest failed:\n```\n{(err or out)[-800:]}\n```")
-            st.rerun()
+            ok, fail = 0, 0
+            with st.spinner(f"Uploading {len(uploaded)} file(s)…"):
+                for f in uploaded:
+                    try:
+                        r = api_upload(f)
+                        if r.status_code == 200:
+                            ok += 1
+                        else:
+                            fail += 1
+                            st.error(f"{f.name}: {r.json().get('error', r.text)}")
+                    except Exception as e:
+                        fail += 1
+                        st.error(f"{f.name}: {e}")
+            if ok:
+                st.success(f"Ingested {ok} file(s).")
+            if fail == 0:
+                st.rerun()
 
     st.divider()
 
     st.subheader("Ingested Files")
-    files = list_ingested_files()
+    files = api_list_files()
     if not files:
         st.info("No files yet. Upload one above to get started.")
+        selected_file = None
     else:
-        for fname in files:
-            cols = st.columns([7, 1])
-            cols[0].markdown(f"📄 `{fname}`")
-            if cols[1].button("✕", key=f"del_{fname}", help=f"Delete {fname}"):
-                (SOURCE_DIR / fname).unlink()
-                wipe_vectorstore()
-                if list_ingested_files():
-                    with st.spinner("Rebuilding vectorstore…"):
-                        run_ingest()
+        for f in files:
+            cols = st.columns([6, 2, 1])
+            cols[0].markdown(f"📄 `{f['name']}`")
+            cols[1].caption(f"{f['chunks']} chunks")
+            if cols[2].button("✕", key=f"del_{f['name']}", help=f"Delete {f['name']}"):
+                with st.spinner(f"Deleting {f['name']}…"):
+                    api_delete(f["name"])
                 st.rerun()
 
-        if st.button(
-            "🗑️ Delete ALL files",
-            use_container_width=True,
-            type="secondary",
-        ):
-            for f in SOURCE_DIR.iterdir():
-                if f.is_file() and not f.name.startswith("."):
-                    f.unlink()
-            wipe_vectorstore()
+        if st.button("🗑️ Delete ALL files", use_container_width=True, type="secondary"):
+            with st.spinner("Deleting all files…"):
+                for f in files:
+                    api_delete(f["name"])
             st.rerun()
+
+    # Selector used by Summarize mode (and could power future per-file ask)
+    selected_file = None
+    if files and mode == "Summarize":
+        st.divider()
+        st.subheader("Summarize target")
+        choices = ["(all files)"] + [f["name"] for f in files]
+        choice = st.selectbox("Pick a file or summarize everything", choices, label_visibility="collapsed")
+        selected_file = None if choice == "(all files)" else choice
 
     st.divider()
 
@@ -180,7 +183,9 @@ with st.sidebar:
     st.markdown(f"- [Swagger UI]({API_URL}/apidocs)")
     st.markdown(f"- [Raw spec]({API_URL}/apispec_1.json)")
 
-# ---------- Model info bar ----------
+
+# --------------------------- model info bar ---------------------------
+
 model_name = (h or {}).get("model", "unknown")
 st.markdown(
     f"""<div class="ora-model-bar">💬 &nbsp; LLM: <b>ollama</b> &nbsp;|&nbsp; """
@@ -188,8 +193,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------- Chat history ----------
+
+# --------------------------- chat rendering ---------------------------
+
 def render_sources(documents):
+    if not documents:
+        return
     with st.expander(f"📚 Sources ({len(documents)})"):
         for i, d in enumerate(documents, 1):
             st.markdown(f"**{i}. {d['source']}**")
@@ -200,13 +209,12 @@ def render_sources(documents):
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if msg.get("documents"):
-            render_sources(msg["documents"])
+        render_sources(msg.get("documents") or [])
 
 
-def fire_query(prompt: str, append_user_msg: bool = True):
-    if mode in ("Basic", "Summarize"):
-        st.warning(f"`{mode}` mode isn't wired up yet — falling back to RAG.")
+# --------------------------- query dispatcher ---------------------------
+
+def fire_query(prompt: str, run_mode: str, target_file: str | None, append_user_msg: bool):
     if append_user_msg:
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -215,38 +223,65 @@ def fire_query(prompt: str, append_user_msg: bool = True):
     with st.chat_message("assistant"):
         with st.spinner("Thinking…"):
             try:
-                data = ask_api(prompt)
-                docs = data.get("documents", [])
-                if mode == "Search":
-                    answer = "_Search mode — retrieved chunks only, no synthesis._"
-                else:
+                docs = []
+                if run_mode == "RAG":
+                    data = api_ask(prompt)
                     answer = data.get("answer", "(no answer)")
+                    docs = data.get("documents", [])
+                elif run_mode == "Search":
+                    data = api_ask(prompt)
+                    docs = data.get("documents", [])
+                    answer = f"_Search mode — {len(docs)} chunks retrieved, no synthesis._"
+                elif run_mode == "Basic":
+                    data = api_chat(prompt)
+                    answer = data.get("answer", "(no answer)")
+                elif run_mode == "Summarize":
+                    data = api_summarize(target_file)
+                    truncated = " _(truncated)_" if data.get("truncated") else ""
+                    scope = data.get("file", "all")
+                    answer = (
+                        f"**Summary of `{scope}`** "
+                        f"(used {data.get('chunks_used', '?')} chunks{truncated})\n\n"
+                        f"{data.get('answer', '(no answer)')}"
+                    )
+                else:
+                    answer = f"Unknown mode: {run_mode}"
+
                 st.markdown(answer)
-                if docs:
-                    render_sources(docs)
+                render_sources(docs)
                 st.session_state.messages.append(
                     {"role": "assistant", "content": answer, "documents": docs}
                 )
             except Exception as e:
                 err = f"Request failed: {e}"
                 st.error(err)
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": err}
-                )
+                st.session_state.messages.append({"role": "assistant", "content": err})
 
 
-# Honour a pending retry first; otherwise pick up chat input
-pending = st.session_state.pending_query
+pending_q = st.session_state.pending_query
+pending_m = st.session_state.pending_mode
 st.session_state.pending_query = None
+st.session_state.pending_mode = None
 
-prompt = st.chat_input("Ask a question about your documents")
+# Summarize mode auto-fires on click (no chat input needed)
+if mode == "Summarize":
+    if st.button("📝 Generate summary", type="primary"):
+        scope = selected_file or "all files"
+        fire_query(f"Summarize {scope}", "Summarize", selected_file, append_user_msg=True)
 
-if pending:
-    fire_query(pending, append_user_msg=False)
+prompt = st.chat_input(
+    "Ask a question…" if mode != "Summarize" else "(Summarize mode — use the button above)",
+    disabled=(mode == "Summarize"),
+)
+
+if pending_q:
+    fire_query(pending_q, pending_m or mode, selected_file, append_user_msg=False)
 elif prompt:
-    fire_query(prompt, append_user_msg=True)
+    fire_query(prompt, mode, selected_file, append_user_msg=True)
 
-# ---------- Retry / Undo / Clear ----------
+
+# --------------------------- retry / undo / clear ---------------------------
+
 def last_user_query():
     for m in reversed(st.session_state.messages):
         if m["role"] == "user":
@@ -265,6 +300,7 @@ if col_retry.button(
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
         st.session_state.messages.pop()
     st.session_state.pending_query = last_user_query()
+    st.session_state.pending_mode = mode
     st.rerun()
 
 if col_undo.button(
