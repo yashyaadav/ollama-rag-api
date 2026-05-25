@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 import os
 import glob
+import logging
+from datetime import datetime
 from typing import List
 from multiprocessing import Pool
 from tqdm import tqdm
 
-# RAG Pipeline 
+# Setup logging
+log_directory = 'logs'  # This will create or use a 'logs' directory in the current working directory
+os.makedirs(log_directory, exist_ok=True)
+log_filename = datetime.now().strftime('%Y-%m-%d') + '_ingest.log'
+logging.basicConfig(filename=os.path.join(log_directory, log_filename), level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# RAG Pipeline 
 from langchain.document_loaders import (
     CSVLoader,
     EverNoteLoader,
@@ -88,38 +95,32 @@ def load_single_document(file_path: str) -> List[Document]:
     raise ValueError(f"Unsupported file extension '{ext}'")
 
 def load_documents(source_dir: str, ignored_files: List[str] = []) -> List[Document]:
-    """
-    Loads all documents from the source documents directory, ignoring specified files
-    """
     all_files = []
     for ext in LOADER_MAPPING:
         all_files.extend(
             glob.glob(os.path.join(source_dir, f"**/*{ext}"), recursive=True)
         )
     filtered_files = [file_path for file_path in all_files if file_path not in ignored_files]
-
+    logging.info(f"Attempting to load {len(filtered_files)} files.")
     with Pool(processes=os.cpu_count()) as pool:
         results = []
         with tqdm(total=len(filtered_files), desc='Loading new documents', ncols=80) as pbar:
             for i, docs in enumerate(pool.imap_unordered(load_single_document, filtered_files)):
                 results.extend(docs)
                 pbar.update()
-
+    logging.info(f"Successfully loaded {len(results)} documents.")
     return results
 
 def process_documents(ignored_files: List[str] = []) -> List[Document]:
-    """
-    Load documents and split in chunks
-    """
-    print(f"Loading documents from {source_directory}")
+    logging.info(f"Starting document processing from {source_directory}")
     documents = load_documents(source_directory, ignored_files)
     if not documents:
-        print("No new documents to load")
-        exit(0)
-    print(f"Loaded {len(documents)} new documents from {source_directory}")
+        logging.info("No new documents were found to load.")
+        return
+    logging.info(f"Loaded {len(documents)} new documents from {source_directory}")
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     texts = text_splitter.split_documents(documents)
-    print(f"Split into {len(texts)} chunks of text (max. {chunk_size} tokens each)")
+    logging.info(f"Split into {len(texts)} chunks of text (max {chunk_size} tokens each).")
     return texts
 
 def does_vectorstore_exist(persist_directory: str) -> bool:
