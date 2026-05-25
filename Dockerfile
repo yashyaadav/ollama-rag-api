@@ -1,74 +1,37 @@
-# Use arm64v8/Ubuntu:latest as the base image
-FROM arm64v8/ubuntu:latest
+# Multi-arch base (works on linux/amd64 and linux/arm64).
+FROM python:3.11-slim
 
-# Prevent apt from displaying prompts
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1
 
-# Install dependencies required for pyenv and Python compilation
-RUN apt-get update && apt-get install -y \
-    curl \
-    wget \
-    git \
-    build-essential \
-    libssl-dev \
-    zlib1g-dev \
-    libbz2-dev \
-    libreadline-dev \
-    libsqlite3-dev \
-    llvm \
-    libncursesw5-dev \
-    xz-utils \
-    tk-dev \
-    libxml2-dev \
-    libxmlsec1-dev \
-    libffi-dev \
-    liblzma-dev
+# System deps:
+#   curl       — fetch the Ollama install script + health-poll the daemon
+#   ca-certs   — TLS to huggingface, ollama, etc.
+#   git        — some Python packages still need it
+#   build-ess. — wheels that lack ARM/x86 prebuilt binaries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        git \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install pyenv
-RUN curl https://pyenv.run | bash
-
-# Set environment variables for pyenv and ensure it is initialized correctly in this layer and subsequent layers
-ENV PYENV_ROOT /root/.pyenv
-ENV PATH $PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH
-
-# Install Python 3.11.9 using pyenv and set it as the default Python version
-RUN pyenv install 3.11.9 && \
-    pyenv global 3.11.9
-
-# Update pip and install virtualenv
-RUN pip install --upgrade pip && \
-    pip install virtualenv
-
-# Create a virtual environment named 'venv'
-RUN virtualenv /app/venv
-
-# Set the virtual environment as the default Python environment for all subsequent commands
-ENV PATH /app/venv/bin:$PATH
-
-# Install Ollama using the provided install script
+# Install Ollama (the script is multi-arch and idempotent).
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy the entire current directory contents into the container's working directory
+# Install Python deps first so iterating on code doesn't bust the layer cache.
+COPY requirements.txt /app/requirements.txt
+RUN pip install --upgrade pip && pip install -r /app/requirements.txt
+
+# Copy the rest of the project. .dockerignore keeps db/, .venv, .git, etc. out.
 COPY . /app
 
-# Install Python dependencies using pip in the virtual environment
-RUN /app/venv/bin/pip install -r /app/requirements.txt
+RUN chmod +x /app/pull-model.sh /app/docker-entrypoint.sh
 
-# Specifically, copy custom scripts and the start script into the container
-COPY ./custom_scripts /app/custom_scripts
-COPY start.sh /app/start.sh
+# Ollama (11434), Flask API (5000), Streamlit UI (8501)
+EXPOSE 11434 5000 8501
 
-# Make sure the start script is executable
-RUN chmod +x /app/start.sh
-RUN /app/start.sh
-
-RUN chmod +x /app/up.sh /app/privateGPT.py
-
-# Expose port 11434 for Ollama service and 5000 for the Flask application
-EXPOSE 11434 5000
-
-# Set command for container start
-CMD ["/app/up.sh"]
+CMD ["/app/docker-entrypoint.sh"]
