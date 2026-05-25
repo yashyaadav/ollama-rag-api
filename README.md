@@ -1,69 +1,191 @@
-#### Step 1: Step a Virtual Environment
+# ollama-rag-api
 
-#### Step 2: Install the Requirements
-```
-pip install -r requirements.txt
-```
+**Chat with your local documents using a local LLM. Nothing leaves your machine.**
 
-#### Step 3: Pull the models (if you already have models loaded in Ollama, then not required)
-#### Make sure to have Ollama running on your system from https://ollama.ai
-```
-ollama pull mistral
-```
+A small, self-hosted RAG stack: drop documents into a folder, embed them into
+Chroma, and query them through a Flask REST API powered by an Ollama-served LLM.
+Ships with an interactive Swagger UI, a Streamlit chat frontend, ready-to-run
+client examples, a Postman collection, and a Docker setup that runs the whole
+thing in one container.
 
-#### Step 4: put your files in the source_documents folder after making a directory
-```
-mkdir source_documents
-```
+![demo](docs/demo.gif)
 
-#### Step 5: Ingest the files (use python3 if on mac)
-```
-python ingest.py
-```
+---
 
-Output should look like this:
-```shell
-Creating new vectorstore
-Loading documents from source_documents
-Loading new documents: 100%|██████████████████████| 1/1 [00:01<00:00,  1.99s/it]
-Loaded 235 new documents from source_documents
-Split into 1268 chunks of text (max. 500 tokens each)
-Creating embeddings. May take some minutes...
-Ingestion complete! You can now run privateGPT.py to query your documents
+## Architecture
+
+```
+                            ┌────────────────────┐
+  Streamlit chat UI ─┐      │  LangChain         │      ┌──► Chroma vectorstore
+                     ├─►  Flask  ──► RetrievalQA  ──┤
+  curl / Postman /  ─┘     /ask                    │      └──► Ollama LLM
+  python_client.py         /health
+                           /apidocs  (Swagger UI)
 ```
 
-#### Step 6: Run this command (use python3 if on mac)
+---
+
+## Quick start (local)
+
+Prereqs: Python 3.11+, [Ollama](https://ollama.com) installed.
+
+```bash
+make install      # python -m venv .venv && pip install -r requirements.txt
+make ollama       # ollama pull llama3   (skip if you already have a model)
+# drop your docs into source_documents/  (a demo test.pdf ships in the repo)
+make ingest       # embed everything into db/
+make run          # API on :5000, Streamlit UI on :8501
 ```
-python privateGPT.py
+
+Open:
+
+- **Streamlit chat UI** — http://localhost:8501
+- **Swagger UI** — http://localhost:5000/apidocs
+- **Health probe** — http://localhost:5000/health
+
+`make help` lists every target.
+
+---
+
+## Quick start (Docker)
+
+```bash
+make docker       # builds the image, then runs it with 5000 / 8501 / 11434 exposed
 ```
 
-##### Play with your docs
-Enter a query: How many locations does WeWork have?
+The container runs Ollama, pulls the model lazily if missing, ingests
+`source_documents/` only when it has content and no `db/` exists, then serves
+the API and Streamlit. Mount your own `source_documents/` and `db/` as volumes
+(the Makefile does this for you).
 
+---
 
-### Try with a different model:
+## API reference
+
+### `GET /health`
+
+Liveness probe. Returns the configured model name.
+
+```bash
+$ curl -s http://localhost:5000/health
+{"status":"ok","model":"llama3"}
 ```
-ollama pull llama2:13b
-MODEL=llama2:13b python privateGPT.py
+
+### `POST /ask`
+
+Run a RAG query over the ingested documents.
+
+**Request**
+
+| field | type   | required | description                        |
+|-------|--------|----------|------------------------------------|
+| query | string | yes      | The natural-language question      |
+
+**Response**
+
+| field        | type   | description                                              |
+|--------------|--------|----------------------------------------------------------|
+| query        | string | Echo of the request query                                |
+| answer       | string | LLM answer grounded in the retrieved chunks              |
+| time_taken   | number | Seconds spent on retrieval + generation                  |
+| documents    | array  | The source chunks used; each has `source` and `content`  |
+
+**Status codes:** `200` ok · `400` missing query · `500` internal error.
+
+**Examples**
+
+```bash
+# curl
+curl -X POST http://localhost:5000/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"What is this document about?"}'
+
+# httpie
+http POST :5000/ask query="What is this document about?"
+
+# python
+python examples/python_client.py "What is this document about?"
 ```
 
-## Add more files
+Interactive playground with "Try it out": **http://localhost:5000/apidocs**.
+The raw OpenAPI spec is at `/apispec_1.json`.
 
-Put any and all your files into the `source_documents` directory
+Postman: import `examples/postman_collection.json`, set the `API_URL`
+variable, and hit either request.
 
-The supported extensions are:
+---
 
-- `.csv`: CSV,
-- `.docx`: Word Document,
-- `.doc`: Word Document,
-- `.enex`: EverNote,
-- `.eml`: Email,
-- `.epub`: EPub,
-- `.html`: HTML File,
-- `.md`: Markdown,
-- `.msg`: Outlook Message,
-- `.odt`: Open Document Text,
-- `.pdf`: Portable Document Format (PDF),
-- `.pptx` : PowerPoint Document,
-- `.ppt` : PowerPoint Document,
-- `.txt`: Text file (UTF-8),
+## Streamlit UI
+
+A small chat frontend at http://localhost:8501. Sidebar shows live API health
+and links straight to Swagger. Each assistant turn has an expandable
+**Sources** section listing the retrieved chunks so you can verify the
+answer is grounded.
+
+Reads `API_URL` from the env (defaults to `http://localhost:5000`), so it
+points at either the local Flask process or a Dockerised API.
+
+---
+
+## Configuration
+
+All values are env vars; defaults are sensible. See `.env.example`.
+
+| variable                | default              | purpose                                     |
+|-------------------------|----------------------|---------------------------------------------|
+| `MODEL`                 | `llama3`             | Ollama model name                           |
+| `EMBEDDINGS_MODEL_NAME` | `all-MiniLM-L6-v2`   | HuggingFace sentence-transformers model     |
+| `PERSIST_DIRECTORY`     | `db`                 | Where Chroma persists the vector store      |
+| `TARGET_SOURCE_CHUNKS`  | `4`                  | Chunks retrieved per query                  |
+| `API_URL`               | `http://localhost:5000` | Where the UI/examples reach the API     |
+| `FLASK_DEBUG`           | `0`                  | `1` enables Flask debug — **never in prod** |
+
+---
+
+## Supported document types
+
+`.csv`, `.doc`, `.docx`, `.enex`, `.eml`, `.epub`, `.html`, `.md`, `.odt`,
+`.pdf`, `.ppt`, `.pptx`, `.txt`.
+
+Drop files into `source_documents/` and run `make ingest`. Re-running adds
+only new files; the existing vector store is preserved.
+
+---
+
+## Examples
+
+Everything lives under `examples/`:
+
+- `curl.sh` — single-shot curl POST to `/ask`, JSON-safe quoting + jq
+- `httpie.sh` — same in HTTPie syntax
+- `python_client.py` — minimal `ChatClient` with `health()` and `ask()`
+- `postman_collection.json` — Postman v2.1 collection (importable)
+
+---
+
+## Troubleshooting
+
+- **`/health` returns `500` / connection refused** — Ollama isn't running.
+  Run `ollama serve` in another terminal (the Docker setup handles this for you).
+- **Port already in use** — change `--server.port` for Streamlit, or set
+  `app.run(port=...)` for Flask. Default ports: `5000` (API), `8501` (UI),
+  `11434` (Ollama).
+- **Ingest reports "No new documents to load"** — the file is already in the
+  store. To re-ingest from scratch: `make clean && make ingest`.
+- **First model pull is slow** — `llama3` is several GB. Switch to a smaller
+  model via `MODEL=mistral make ollama && MODEL=mistral make api`.
+
+---
+
+## Credits
+
+- Originally inspired by [imartinez/privateGPT](https://github.com/imartinez/privateGPT) — the CLI design and ingest pipeline trace back to that project.
+- LLM serving via [Ollama](https://ollama.com).
+- Embeddings via [sentence-transformers](https://www.sbert.net/).
+- Vector store via [Chroma](https://www.trychroma.com/).
+
+---
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
