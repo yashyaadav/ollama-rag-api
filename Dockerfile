@@ -10,11 +10,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   ca-certs   — TLS to huggingface, ollama, etc.
 #   git        — some Python packages still need it
 #   build-ess. — wheels that lack ARM/x86 prebuilt binaries
+#   zstd       — required by the Ollama installer's tarball extraction
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
         git \
         build-essential \
+        zstd \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Ollama (the script is multi-arch and idempotent).
