@@ -18,7 +18,7 @@ brew install vhs            # terminal cast → gif, scriptable
 
 ## Capture `docs/demo.gif`
 
-1. Make sure the API and Ollama aren't running on `:5000` / `:11434`.
+1. Make sure the API and Ollama aren't running on `:5001` / `:11434`.
 2. Place a small document under `source_documents/` (the repo ships
    with a `test.pdf` for this).
 3. From the repo root, run:
@@ -54,7 +54,7 @@ Sleep 8s
 ## Capture `docs/swagger.png`
 
 1. `make run` (or just `make api`).
-2. Open http://localhost:5000/apidocs in a browser.
+2. Open http://localhost:5001/apidocs in a browser.
 3. Expand the **POST /ask** endpoint so the request/response schema is
    visible.
 4. Take a screenshot of the page (macOS: `Cmd+Shift+4`, drag a tight

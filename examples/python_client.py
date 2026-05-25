@@ -4,7 +4,7 @@ Usage:
     python examples/python_client.py "What is this document about?"
 
 Environment:
-    API_URL (default: http://localhost:5000)
+    API_URL (default: http://localhost:5001)
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import requests
 
 class ChatClient:
     def __init__(self, base_url: str | None = None, timeout: int = 300) -> None:
-        self.base_url = (base_url or os.getenv("API_URL", "http://localhost:5000")).rstrip("/")
+        self.base_url = (base_url or os.getenv("API_URL", "http://localhost:5001")).rstrip("/")
         self.timeout = timeout
 
     def health(self) -> dict[str, Any]:

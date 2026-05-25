@@ -20,7 +20,7 @@ ollama:  ## Pull the LLM into the local Ollama instance
 ingest:  ## Embed everything under source_documents/ into Chroma (db/)
 	$(PY) ingest.py
 
-api:  ## Run the Flask API on :5000 (Swagger UI at /apidocs)
+api:  ## Run the Flask API on :5001 (Swagger UI at /apidocs)
 	$(PY) api.py
 
 ui:  ## Run the Streamlit chat UI on :8501
@@ -36,7 +36,7 @@ docker-build:  ## Build the Docker image
 	docker build -t $(IMAGE) .
 
 docker-run:  ## Run the Docker image with API + UI + Ollama exposed
-	docker run --rm -p 5000:5000 -p 8501:8501 -p 11434:11434 \
+	docker run --rm -p 5001:5001 -p 8501:8501 -p 11434:11434 \
 	  -v $$PWD/source_documents:/app/source_documents \
 	  -v $$PWD/db:/app/db \
 	  $(IMAGE)

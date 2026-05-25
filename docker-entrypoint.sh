@@ -3,7 +3,7 @@
 #   1. Start Ollama daemon
 #   2. Pull the configured model (if missing)
 #   3. Ingest source_documents/ if non-empty and no db/ yet
-#   4. Launch the Flask API on :5000 and Streamlit on :8501
+#   4. Launch the Flask API on :5001 and Streamlit on :8501
 set -euo pipefail
 
 MODEL="${MODEL:-llama3.2}"

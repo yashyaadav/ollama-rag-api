@@ -2,7 +2,7 @@
 # Ask a question via curl.
 # Usage:  ./examples/curl.sh "your question here"
 set -euo pipefail
-API_URL="${API_URL:-http://localhost:5000}"
+API_URL="${API_URL:-http://localhost:5001}"
 QUERY="${1:-What is this document about?}"
 
 curl -sS -X POST "$API_URL/ask" \

@@ -34,14 +34,14 @@ make install      # python -m venv .venv && pip install -r requirements.txt
 make ollama       # ollama pull llama3.2   (skip if you already have a model)
 # drop your docs into source_documents/  (a demo test.pdf ships in the repo)
 make ingest       # embed everything into db/
-make run          # API on :5000, Streamlit UI on :8501
+make run          # API on :5001, Streamlit UI on :8501
 ```
 
 Open:
 
 - **Streamlit chat UI** — http://localhost:8501
-- **Swagger UI** — http://localhost:5000/apidocs
-- **Health probe** — http://localhost:5000/health
+- **Swagger UI** — http://localhost:5001/apidocs
+- **Health probe** — http://localhost:5001/health
 
 `make help` lists every target.
 
@@ -67,7 +67,7 @@ the API and Streamlit. Mount your own `source_documents/` and `db/` as volumes
 Liveness probe. Returns the configured model name.
 
 ```bash
-$ curl -s http://localhost:5000/health
+$ curl -s http://localhost:5001/health
 {"status":"ok","model":"llama3.2"}
 ```
 
@@ -96,18 +96,18 @@ Run a RAG query over the ingested documents.
 
 ```bash
 # curl
-curl -X POST http://localhost:5000/ask \
+curl -X POST http://localhost:5001/ask \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is this document about?"}'
 
 # httpie
-http POST :5000/ask query="What is this document about?"
+http POST :5001/ask query="What is this document about?"
 
 # python
 python examples/python_client.py "What is this document about?"
 ```
 
-Interactive playground with "Try it out": **http://localhost:5000/apidocs**.
+Interactive playground with "Try it out": **http://localhost:5001/apidocs**.
 The raw OpenAPI spec is at `/apispec_1.json`.
 
 Postman: import `examples/postman_collection.json`, set the `API_URL`
@@ -122,7 +122,7 @@ and links straight to Swagger. Each assistant turn has an expandable
 **Sources** section listing the retrieved chunks so you can verify the
 answer is grounded.
 
-Reads `API_URL` from the env (defaults to `http://localhost:5000`), so it
+Reads `API_URL` from the env (defaults to `http://localhost:5001`), so it
 points at either the local Flask process or a Dockerised API.
 
 ---
@@ -137,7 +137,8 @@ All values are env vars; defaults are sensible. See `.env.example`.
 | `EMBEDDINGS_MODEL_NAME` | `all-MiniLM-L6-v2`   | HuggingFace sentence-transformers model     |
 | `PERSIST_DIRECTORY`     | `db`                 | Where Chroma persists the vector store      |
 | `TARGET_SOURCE_CHUNKS`  | `4`                  | Chunks retrieved per query                  |
-| `API_URL`               | `http://localhost:5000` | Where the UI/examples reach the API     |
+| `PORT`                  | `5001`               | Port the Flask API binds to                 |
+| `API_URL`               | `http://localhost:5001` | Where the UI/examples reach the API     |
 | `FLASK_DEBUG`           | `0`                  | `1` enables Flask debug — **never in prod** |
 
 ---
@@ -167,9 +168,13 @@ Everything lives under `examples/`:
 
 - **`/health` returns `500` / connection refused** — Ollama isn't running.
   Run `ollama serve` in another terminal (the Docker setup handles this for you).
-- **Port already in use** — change `--server.port` for Streamlit, or set
-  `app.run(port=...)` for Flask. Default ports: `5000` (API), `8501` (UI),
-  `11434` (Ollama).
+- **Port already in use** — override with `PORT=5050 make api` (Flask) or
+  `make ui -- --server.port 8600` (Streamlit). Default ports: `5001` (API),
+  `8501` (UI), `11434` (Ollama).
+- **macOS `Address already in use` on 5000** — that's why the API defaults
+  to `5001`. macOS Monterey+ binds port 5000 for AirPlay Receiver. You can
+  either keep `5001` (recommended) or disable AirPlay Receiver in
+  *System Settings → General → AirDrop & Handoff*.
 - **Ingest reports "No new documents to load"** — the file is already in the
   store. To re-ingest from scratch: `make clean && make ingest`.
 - **First model pull is slow** — `llama3.2` is ~2 GB. Switch to a different

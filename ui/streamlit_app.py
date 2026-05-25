@@ -2,7 +2,7 @@ import os
 import requests
 import streamlit as st
 
-API_URL = os.getenv("API_URL", "http://localhost:5000")
+API_URL = os.getenv("API_URL", "http://localhost:5001")
 
 st.set_page_config(page_title="ollama-rag-api", page_icon="💬", layout="wide")
 st.title("💬 Chat with your documents")
