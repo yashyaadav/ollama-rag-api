@@ -117,7 +117,7 @@ def ask_question():
           type: object
           required: [query]
           properties:
-            query: { type: string, example: What is this document about? }
+            query: { type: string, example: "What is this document about?" }
     responses:
       200:
         description: Answer plus the deduped source chunks used to produce it
