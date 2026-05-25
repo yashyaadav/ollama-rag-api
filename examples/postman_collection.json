@@ -1,15 +1,11 @@
 {
   "info": {
     "name": "ollama-rag-api",
-    "description": "Chat with your local documents using a local LLM via Ollama.",
+    "description": "Chat with your local documents using a local LLM via Ollama. Endpoints cover four chat modes (RAG / direct chat / summarize) and full file management.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {
-      "key": "API_URL",
-      "value": "http://localhost:5001",
-      "type": "string"
-    }
+    { "key": "API_URL", "value": "http://localhost:5001", "type": "string" }
   ],
   "item": [
     {
@@ -17,35 +13,97 @@
       "request": {
         "method": "GET",
         "header": [],
-        "url": {
-          "raw": "{{API_URL}}/health",
-          "host": ["{{API_URL}}"],
-          "path": ["health"]
-        },
+        "url": { "raw": "{{API_URL}}/health", "host": ["{{API_URL}}"], "path": ["health"] },
         "description": "Liveness probe. Returns {status, model}."
       },
       "response": []
     },
     {
-      "name": "Ask",
+      "name": "Ask (RAG)",
       "request": {
         "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"query\": \"What is this document about?\"\n}" },
+        "url": { "raw": "{{API_URL}}/ask", "host": ["{{API_URL}}"], "path": ["ask"] },
+        "description": "RAG query. Returns {query, answer, time_taken, documents[]}."
+      },
+      "response": []
+    },
+    {
+      "name": "Chat (no retrieval)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"query\": \"Explain RAG in one sentence.\"\n}" },
+        "url": { "raw": "{{API_URL}}/chat", "host": ["{{API_URL}}"], "path": ["chat"] },
+        "description": "Talk to the LLM directly. Returns {query, answer, time_taken}."
+      },
+      "response": []
+    },
+    {
+      "name": "Summarize (single file)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"file\": \"test.pdf\"\n}" },
+        "url": { "raw": "{{API_URL}}/summarize", "host": ["{{API_URL}}"], "path": ["summarize"] },
+        "description": "Summarize one ingested file. Omit `file` to summarize the whole corpus. Returns {file, answer, chunks_used, truncated, time_taken}."
+      },
+      "response": []
+    },
+    {
+      "name": "Summarize (all)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{}" },
+        "url": { "raw": "{{API_URL}}/summarize", "host": ["{{API_URL}}"], "path": ["summarize"] },
+        "description": "Summarize the entire corpus."
+      },
+      "response": []
+    },
+    {
+      "name": "List files",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{API_URL}}/files", "host": ["{{API_URL}}"], "path": ["files"] },
+        "description": "List files under source_documents/ with per-file chunk counts."
+      },
+      "response": []
+    },
+    {
+      "name": "Ingest (upload file)",
+      "request": {
+        "method": "POST",
+        "header": [],
         "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"What is this document about?\"\n}"
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "Document to upload + ingest. Supported: pdf, txt, md, docx, csv, html, pptx, epub, odt, eml, enex, msg."
+            }
+          ]
         },
+        "url": { "raw": "{{API_URL}}/ingest", "host": ["{{API_URL}}"], "path": ["ingest"] },
+        "description": "Multipart upload. Saves the file under source_documents/ and chunks it into the vectorstore. Returns {file, chunks_added, time_taken}."
+      },
+      "response": []
+    },
+    {
+      "name": "Delete file",
+      "request": {
+        "method": "DELETE",
+        "header": [],
         "url": {
-          "raw": "{{API_URL}}/ask",
+          "raw": "{{API_URL}}/files/test.pdf",
           "host": ["{{API_URL}}"],
-          "path": ["ask"]
+          "path": ["files", "test.pdf"]
         },
-        "description": "Run a RAG query. Returns {query, answer, time_taken, documents[]}."
+        "description": "Remove a file from source_documents/ and delete its chunks from the vectorstore. Returns {deleted, chunks_removed, file_removed}."
       },
       "response": []
     }

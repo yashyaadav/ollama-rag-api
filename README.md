@@ -4,21 +4,22 @@
 
 A small, self-hosted RAG stack: drop documents into a folder, embed them into
 Chroma, and query them through a Flask REST API powered by an Ollama-served LLM.
-Ships with an interactive Swagger UI, a Streamlit chat frontend, ready-to-run
-client examples, a Postman collection, and a Docker setup that runs the whole
-thing in one container.
+The API supports four chat modes (RAG, direct chat, search-only, summarize) and
+full file management (upload, list, delete) so the Streamlit frontend, curl,
+Postman, or any custom client can drive the whole experience without touching
+the filesystem. Ships with an interactive Swagger UI and a Docker setup that
+runs the whole stack in one container.
 
 ---
 
 ## Architecture
 
 ```
-                            ┌────────────────────┐
-  Streamlit chat UI ─┐      │  LangChain         │      ┌──► Chroma vectorstore
-                     ├─►  Flask  ──► RetrievalQA  ──┤
-  curl / Postman /  ─┘     /ask                    │      └──► Ollama LLM
-  python_client.py         /health
-                           /apidocs  (Swagger UI)
+                                     ┌──► Chroma vectorstore
+  Streamlit chat UI ─┐        Flask  │
+                     ├─► /ask, /chat, /summarize  ──► LangChain ──┤
+  curl / Postman /  ─┘    /files (GET/POST/DELETE)                │
+  python_client.py        /health, /apidocs                       └──► Ollama LLM
 ```
 
 ---
@@ -61,56 +62,113 @@ the API and Streamlit. Mount your own `source_documents/` and `db/` as volumes
 
 ## API reference
 
-### `GET /health`
+Eight endpoints across three groups. Interactive playground with "Try it out"
+is at **http://localhost:5001/apidocs**; the raw OpenAPI spec lives at
+`/apispec_1.json`. The full request/response shapes are also captured in
+`examples/postman_collection.json`.
 
-Liveness probe. Returns the configured model name.
+| method | path                  | purpose                                              |
+|--------|-----------------------|------------------------------------------------------|
+| GET    | `/health`             | Liveness probe                                       |
+| POST   | `/ask`                | RAG: retrieve + answer with sources                  |
+| POST   | `/chat`               | Talk to the LLM directly, no retrieval               |
+| POST   | `/summarize`          | Summarize one file or the whole corpus               |
+| GET    | `/files`              | List ingested files + per-file chunk counts          |
+| POST   | `/ingest`             | Upload a file (multipart) and add it to the corpus   |
+| DELETE | `/files/<name>`       | Remove a file and its chunks from the vectorstore    |
+
+### Meta
+
+#### `GET /health`
 
 ```bash
 $ curl -s http://localhost:5001/health
 {"status":"ok","model":"llama3.2"}
 ```
 
-### `POST /ask`
+### Chat modes
 
-Run a RAG query over the ingested documents.
+#### `POST /ask`  — RAG
 
-**Request**
-
-| field | type   | required | description                        |
-|-------|--------|----------|------------------------------------|
-| query | string | yes      | The natural-language question      |
-
-**Response**
-
-| field        | type   | description                                              |
-|--------------|--------|----------------------------------------------------------|
-| query        | string | Echo of the request query                                |
-| answer       | string | LLM answer grounded in the retrieved chunks              |
-| time_taken   | number | Seconds spent on retrieval + generation                  |
-| documents    | array  | The source chunks used; each has `source` and `content`  |
-
-**Status codes:** `200` ok · `400` missing query · `500` internal error.
-
-**Examples**
+Retrieves the top-`TARGET_SOURCE_CHUNKS` chunks and asks the LLM for a grounded answer.
 
 ```bash
-# curl
 curl -X POST http://localhost:5001/ask \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is this document about?"}'
+```
 
-# httpie
-http POST :5001/ask query="What is this document about?"
+Returns `{query, answer, time_taken, documents: [{source, content}]}`. Duplicate
+chunks are removed; only unique `(source, content)` pairs are returned.
 
-# python
+#### `POST /chat`  — no retrieval
+
+```bash
+curl -X POST http://localhost:5001/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"Explain RAG in one sentence."}'
+```
+
+Returns `{query, answer, time_taken}`. Faster than `/ask` (skips embedding +
+similarity search).
+
+#### `POST /summarize`  — whole-doc summary
+
+```bash
+# one file
+curl -X POST http://localhost:5001/summarize \
+  -H 'Content-Type: application/json' \
+  -d '{"file":"test.pdf"}'
+
+# everything
+curl -X POST http://localhost:5001/summarize \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+Returns `{file, answer, chunks_used, truncated, time_taken}`. Concatenated
+chunks are clipped at 16 000 chars before being sent to the LLM (the `truncated`
+flag tells you when that happened).
+
+### File management
+
+#### `GET /files`
+
+```bash
+$ curl -s http://localhost:5001/files
+{"files":[{"name":"test.pdf","size_bytes":141013,"chunks":6}]}
+```
+
+#### `POST /ingest`  — multipart upload
+
+```bash
+curl -X POST http://localhost:5001/ingest \
+  -F 'file=@/path/to/your-doc.pdf'
+```
+
+Returns `{file, chunks_added, time_taken}`. Supported types match the list in
+[Supported document types](#supported-document-types). The file is rolled back
+from disk if embedding fails, so a failed upload leaves no orphans.
+
+#### `DELETE /files/<name>`
+
+```bash
+curl -X DELETE http://localhost:5001/files/test.pdf
+```
+
+Returns `{deleted, chunks_removed, file_removed}`. Removes both the file from
+`source_documents/` and its chunks from Chroma (filtered by `metadata.source` —
+no full re-ingest needed).
+
+### Other clients
+
+```bash
+http POST :5001/ask query="What is this document about?"   # httpie
 python examples/python_client.py "What is this document about?"
 ```
 
-Interactive playground with "Try it out": **http://localhost:5001/apidocs**.
-The raw OpenAPI spec is at `/apispec_1.json`.
-
 Postman: import `examples/postman_collection.json`, set the `API_URL`
-variable, and hit either request.
+variable, and hit any request.
 
 ---
 
