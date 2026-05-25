@@ -180,6 +180,8 @@ with st.sidebar:
         st.success(f"✅ API up — `{h.get('model','?')}`")
     else:
         st.error(f"❌ API unreachable at {API_URL}")
+        if st.button("🔄 Recheck", use_container_width=True, key="recheck_health"):
+            st.rerun()
     st.markdown(f"- [Swagger UI]({API_URL}/apidocs)")
     st.markdown(f"- [Raw spec]({API_URL}/apispec_1.json)")
 
