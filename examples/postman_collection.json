@@ -1,0 +1,53 @@
+{
+  "info": {
+    "name": "ollama-rag-api",
+    "description": "Chat with your local documents using a local LLM via Ollama.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "API_URL",
+      "value": "http://localhost:5000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{API_URL}}/health",
+          "host": ["{{API_URL}}"],
+          "path": ["health"]
+        },
+        "description": "Liveness probe. Returns {status, model}."
+      },
+      "response": []
+    },
+    {
+      "name": "Ask",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"What is this document about?\"\n}"
+        },
+        "url": {
+          "raw": "{{API_URL}}/ask",
+          "host": ["{{API_URL}}"],
+          "path": ["ask"]
+        },
+        "description": "Run a RAG query. Returns {query, answer, time_taken, documents[]}."
+      },
+      "response": []
+    }
+  ]
+}
