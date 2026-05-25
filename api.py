@@ -115,14 +115,19 @@ def ask_question():
         end = time.time()
 
         print("Query processed in", end - start, "seconds")
+        seen = set()
+        unique_docs = []
+        for doc in docs:
+            key = (doc.metadata["source"], doc.page_content)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_docs.append({"source": key[0], "content": key[1]})
         response = {
             "query": query,
             "answer": answer,
             "time_taken": end - start,
-            "documents": [
-                {"source": doc.metadata["source"], "content": doc.page_content}
-                for doc in docs
-            ],
+            "documents": unique_docs,
         }
         return jsonify(response)
     except Exception as e:
