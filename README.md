@@ -8,8 +8,6 @@ Ships with an interactive Swagger UI, a Streamlit chat frontend, ready-to-run
 client examples, a Postman collection, and a Docker setup that runs the whole
 thing in one container.
 
-![demo](docs/demo.gif)
-
 ---
 
 ## Architecture
@@ -27,7 +25,8 @@ thing in one container.
 
 ## Quick start (local)
 
-Prereqs: Python 3.11+, [Ollama](https://ollama.com) installed.
+Prereqs: Python 3.11+, [Ollama](https://ollama.com) installed and running
+(`ollama serve` or the menu-bar app).
 
 ```bash
 make install      # python -m venv .venv && pip install -r requirements.txt
@@ -50,7 +49,7 @@ Open:
 ## Quick start (Docker)
 
 ```bash
-make docker       # builds the image, then runs it with 5000 / 8501 / 11434 exposed
+make docker       # builds the image, then runs it with 5001 / 8501 / 11434 exposed
 ```
 
 The container runs Ollama, pulls the model lazily if missing, ingests
