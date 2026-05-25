@@ -15,11 +15,14 @@ env/
 # Vector store / ingested data
 db/
 
-# Copyrighted source material — do not commit
-custom_scripts/Inheritance_Book_1_-_Eragon.pdf
-custom_scripts/Inheritance_Book_2_-_Eldest.pdf
-custom_scripts/Inheritance Book 3 - Brisingr ).pdf
-custom_scripts/Inheritance Book 4 - Inheritance.pdf
+# Ingest logs
+logs/
+
+# Source documents — keep the demo test.pdf tracked, ignore everything else
+# (drop your own files here without polluting commits)
+source_documents/*
+!source_documents/.gitkeep
+!source_documents/test.pdf
 
 # IDE
 .idea/
