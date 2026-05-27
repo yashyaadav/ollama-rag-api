@@ -10,6 +10,10 @@ Postman, or any custom client can drive the whole experience without touching
 the filesystem. Ships with an interactive Swagger UI and a Docker setup that
 runs the whole stack in one container.
 
+<p align="center">
+  <img src="docs/images/streamlit-ui.png" alt="Streamlit chat UI in RAG mode, answering a question about an ingested PDF with expandable sources" width="800">
+</p>
+
 ---
 
 ## Architecture
@@ -99,6 +103,10 @@ Eight endpoints across three groups. Interactive playground with "Try it out"
 is at **http://localhost:5001/apidocs**; the raw OpenAPI spec lives at
 `/apispec_1.json`. The full request/response shapes are also captured in
 `examples/postman_collection.json`.
+
+<p align="center">
+  <img src="docs/images/swagger-ui.png" alt="Swagger UI listing the eight ollama-rag-api endpoints grouped by chat, files, and meta" width="800">
+</p>
 
 | method | path                  | purpose                                              |
 |--------|-----------------------|------------------------------------------------------|
