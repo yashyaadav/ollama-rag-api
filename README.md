@@ -1,18 +1,28 @@
 # ollama-rag-api
 
-**Chat with your local documents using a local LLM. Nothing leaves your machine.**
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-API-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-RAG-1C3C3C?logo=langchain&logoColor=white)](https://www.langchain.com/)
+[![Chroma](https://img.shields.io/badge/Chroma-vector_store-FF6B35)](https://www.trychroma.com/)
+[![Ollama](https://img.shields.io/badge/Ollama-local_LLM-000000?logo=ollama&logoColor=white)](https://ollama.com)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-A small, self-hosted RAG stack: drop documents into a folder, embed them into
-Chroma, and query them through a Flask REST API powered by an Ollama-served LLM.
-The API supports four chat modes (RAG, direct chat, search-only, summarize) and
-full file management (upload, list, delete) so the Streamlit frontend, curl,
-Postman, or any custom client can drive the whole experience without touching
-the filesystem. Ships with an interactive Swagger UI and a Docker setup that
-runs the whole stack in one container.
+**A local RAG REST API with a reference Streamlit UI. Chat with your documents — nothing leaves your machine.**
+
+An eight-endpoint **Flask REST API** for retrieval-augmented chat over your own documents, served alongside a Streamlit reference UI. Drop documents into a folder, embed them into Chroma, and query them via the API in four modes (RAG, direct chat, search-only, summarize), with full file management (upload, list, delete) so any client — curl, Postman, Python, a custom frontend, or the bundled Streamlit app — can drive the whole experience. Ships with interactive Swagger docs at `/apidocs` and a Docker setup that runs the whole stack in one container.
 
 <p align="center">
   <img src="docs/images/streamlit-ui.png" alt="Streamlit chat UI in RAG mode, answering a question about an ingested PDF with expandable sources" width="800">
 </p>
+
+## Use as a boilerplate
+
+This repo doubles as a working reference for local-RAG patterns. Three ways to use it:
+
+- **As a backend** — drop the API behind any chat frontend, CLI, or workflow tool. Eight HTTP endpoints, OpenAPI spec at `/apispec_1.json`, Postman collection in [examples/](examples/).
+- **As a learning artifact** — clean, well-scoped Flask app ([api.py](api.py)) and ingest pipeline ([ingest.py](ingest.py)) that show RAG end-to-end: chunking → embeddings → Chroma → retrieval → LLM. No framework abstractions in the way.
+- **As a fork-and-customize starter** — swap the LLM, embeddings, or vector store via env vars; add endpoints or file loaders in two places. See [Extending this](#extending-this).
 
 ---
 
@@ -318,6 +328,22 @@ execution if the port is reachable — never enable in production.
   model via `MODEL=mistral make ollama && MODEL=mistral make api`.
 - **Switched MODEL but the API still reports the old one** — the API caches
   the model at startup. Restart it: `Ctrl+C` then `MODEL=<new> make api`.
+
+---
+
+## Extending this
+
+Where to make the most common changes:
+
+| Want to… | Edit |
+|---|---|
+| Add a new API endpoint | [api.py](api.py) — follow the `/ask` route as a template (route → retrieve → call LLM → return JSON) |
+| Add support for a new file type | [ingest.py](ingest.py) `LOADER_MAPPING` (line 69) — add a `(LoaderClass, kwargs)` entry; the rest of the pipeline picks it up |
+| Use a different LLM | Set `MODEL=mistral` (or any Ollama-served model) in `.env` — see [.env.example](.env.example) |
+| Use different embeddings | Set `EMBEDDINGS_MODEL_NAME=<huggingface/model>` in `.env` |
+| Swap Chroma for another vector store | Two call sites: [api.py:40](api.py) and [ingest.py:146](ingest.py). LangChain's `VectorStore` interface means the surrounding code stays put. |
+| Add authentication | Wrap routes in [api.py](api.py) with a `before_request` hook or a per-route decorator. Bind to `127.0.0.1` if you don't need LAN access. |
+| Front it with a different UI | Point any HTTP client at `http://localhost:5001`. The bundled [ui/streamlit_app.py](ui/streamlit_app.py) is one example consumer, not a requirement. |
 
 ---
 
